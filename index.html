@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a1f12">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Archery Scorer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            range: { 950:'#071910', 900:'#0a1f12', 800:'#0f2d1a', 700:'#1a3d2b', 600:'#1e4d2b' },
+            gold:  { 400:'#ffd700', 500:'#d4a017', 600:'#b8860b' }
+          },
+          fontFamily: { sans: ['Inter','system-ui','sans-serif'] }
+        }
+      }
+    }
+  </script>
+  <style>
+    *{-webkit-tap-highlight-color:transparent;box-sizing:border-box}
+    html{height:-webkit-fill-available;height:100dvh}
+    body{height:100%;min-height:-webkit-fill-available;min-height:100dvh;width:100%;overflow:hidden;overscroll-behavior:none;background:#0a1f12;margin:0;padding:0}
+    #root{height:100%;width:100%;overflow:hidden;display:flex;flex-direction:column}
+    .score-btn{display:flex;align-items:center;justify-content:center;font-weight:700;border-radius:.5rem;min-height:48px;touch-action:manipulation;transition:transform .1s;user-select:none;border:none;cursor:pointer}
+    .score-btn:active{transform:scale(.95)}
+    .arrow-slot{display:flex;align-items:center;justify-content:center;border-radius:.5rem;font-weight:700;font-size:.875rem;border-width:2px;border-style:solid;transition:all .2s;min-height:40px}
+    @keyframes pulse-border{0%,100%{border-color:#d4a017;box-shadow:0 0 0 0 rgba(212,160,23,.4)}50%{border-color:#ffd700;box-shadow:0 0 0 4px rgba(212,160,23,0)}}
+    .slot-active{animation:pulse-border 1.5s ease-in-out infinite}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    .screen-enter{animation:fadeIn .2s ease-out}
+    select option{background:#0f2d1a;color:#fff}
+    input::placeholder{color:#1e4d2b}
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script type="text/babel">
+    const {useState,useEffect}=React;
+
+    // ── DATA ──────────────────────────────────────────────────────────────────
+    const BOW_TYPES=['Recurve','Compound','Barebow','Longbow','Traditional'];
+    const DIST_252=['10 yds','20 yds','30 yds','40 yds','50 yds','60 yds','80 yds','100 yds'];
+    const AWARD_252={'10 yds':'Green','20 yds':'White','30 yds':'Black','40 yds':'Blue','50 yds':'Red','60 yds':'Bronze','80 yds':'Silver','100 yds':'Gold'};
+    const ARROWS_252={Recurve:36,Compound:30,Barebow:60,Longbow:72,Traditional:72};
+    const DOZ_252={36:'3 dozen',30:'2½ dozen',60:'5 dozen',72:'6 dozen'};
+    const TARGET_252={
+      Recurve:{default:252},Compound:{default:280},
+      Barebow:{default:189,'80 yds':164,'100 yds':139},
+      Longbow:{default:164,'80 yds':126,'100 yds':101},
+      Traditional:{default:164,'80 yds':126,'100 yds':101}
+    };
+    function get252Target(bt,d){const t=TARGET_252[bt]||TARGET_252.Recurve;return t[d]??t.default}
+    function get252Zones(bt){return bt==='Compound'?10:5}
+    const ROUNDS=[
+      // IMPERIAL
+      {id:'york',name:'York',type:'imperial',defaultZones:5,note:'Gents',totalArrows:144,
+        distances:[{label:'100 yds',arrows:72,arrowsPerEnd:6},{label:'80 yds',arrows:48,arrowsPerEnd:6},{label:'60 yds',arrows:24,arrowsPerEnd:6}]},
+      {id:'hereford',name:'Hereford / Bristol I',type:'imperial',defaultZones:5,note:'Ladies',totalArrows:144,
+        distances:[{label:'80 yds',arrows:72,arrowsPerEnd:6},{label:'60 yds',arrows:48,arrowsPerEnd:6},{label:'50 yds',arrows:24,arrowsPerEnd:6}]},
+      {id:'bristol2',name:'Bristol II',type:'imperial',defaultZones:5,totalArrows:144,
+        distances:[{label:'60 yds',arrows:72,arrowsPerEnd:6},{label:'50 yds',arrows:48,arrowsPerEnd:6},{label:'40 yds',arrows:24,arrowsPerEnd:6}]},
+      {id:'bristol3',name:'Bristol III',type:'imperial',defaultZones:5,totalArrows:144,
+        distances:[{label:'50 yds',arrows:72,arrowsPerEnd:6},{label:'40 yds',arrows:48,arrowsPerEnd:6},{label:'30 yds',arrows:24,arrowsPerEnd:6}]},
+      {id:'bristol4',name:'Bristol IV',type:'imperial',defaultZones:5,totalArrows:144,
+        distances:[{label:'40 yds',arrows:72,arrowsPerEnd:6},{label:'30 yds',arrows:48,arrowsPerEnd:6},{label:'20 yds',arrows:24,arrowsPerEnd:6}]},
+      {id:'bristol5',name:'Bristol V',type:'imperial',defaultZones:5,totalArrows:144,
+        distances:[{label:'30 yds',arrows:72,arrowsPerEnd:6},{label:'20 yds',arrows:48,arrowsPerEnd:6},{label:'15 yds',arrows:24,arrowsPerEnd:6}]},
+      {id:'new-western',name:'New Western',type:'imperial',defaultZones:5,totalArrows:96,
+        distances:[{label:'100 yds',arrows:48,arrowsPerEnd:6},{label:'80 yds',arrows:48,arrowsPerEnd:6}]},
+      {id:'long-western',name:'Long Western',type:'imperial',defaultZones:5,totalArrows:96,
+        distances:[{label:'80 yds',arrows:48,arrowsPerEnd:6},{label:'60 yds',arrows:48,arrowsPerEnd:6}]},
+      {id:'western',name:'Western',type:'imperial',defaultZones:5,totalArrows:96,
+        distances:[{label:'60 yds',arrows:48,arrowsPerEnd:6},{label:'50 yds',arrows:48,arrowsPerEnd:6}]},
+      {id:'short-western',name:'Short Western',type:'imperial',defaultZones:5,totalArrows:96,
+        distances:[{label:'50 yds',arrows:48,arrowsPerEnd:6},{label:'40 yds',arrows:48,arrowsPerEnd:6}]},
+      {id:'junior-western',name:'Junior Western',type:'imperial',defaultZones:5,totalArrows:96,
+        distances:[{label:'40 yds',arrows:48,arrowsPerEnd:6},{label:'30 yds',arrows:48,arrowsPerEnd:6}]},
+      {id:'new-national',name:'New National',type:'imperial',defaultZones:5,totalArrows:72,
+        distances:[{label:'100 yds',arrows:48,arrowsPerEnd:6},{label:'80 yds',arrows:24,arrowsPerEnd:6}]},
+      {id:'long-national',name:'Long National',type:'imperial',defaultZones:5,totalArrows:72,
+        distances:[{label:'80 yds',arrows:48,arrowsPerEnd:6},{label:'60 yds',arrows:24,arrowsPerEnd:6}]},
+      {id:'national',name:'National',type:'imperial',defaultZones:5,totalArrows:72,
+        distances:[{label:'60 yds',arrows:48,arrowsPerEnd:6},{label:'50 yds',arrows:24,arrowsPerEnd:6}]},
+      {id:'short-national',name:'Short National',type:'imperial',defaultZones:5,totalArrows:48,
+        distances:[{label:'50 yds',arrows:24,arrowsPerEnd:6},{label:'40 yds',arrows:24,arrowsPerEnd:6}]},
+      {id:'junior-national',name:'Junior National',type:'imperial',defaultZones:5,totalArrows:48,
+        distances:[{label:'40 yds',arrows:24,arrowsPerEnd:6},{label:'30 yds',arrows:24,arrowsPerEnd:6}]},
+      {id:'st-george',name:'St. George',type:'imperial',defaultZones:5,totalArrows:108,
+        distances:[{label:'100 yds',arrows:36,arrowsPerEnd:6},{label:'80 yds',arrows:36,arrowsPerEnd:6},{label:'60 yds',arrows:36,arrowsPerEnd:6}]},
+      {id:'albion',name:'Albion',type:'imperial',defaultZones:5,totalArrows:108,
+        distances:[{label:'80 yds',arrows:36,arrowsPerEnd:6},{label:'60 yds',arrows:36,arrowsPerEnd:6},{label:'50 yds',arrows:36,arrowsPerEnd:6}]},
+      {id:'windsor',name:'Windsor',type:'imperial',defaultZones:5,totalArrows:108,
+        distances:[{label:'60 yds',arrows:36,arrowsPerEnd:6},{label:'50 yds',arrows:36,arrowsPerEnd:6},{label:'40 yds',arrows:36,arrowsPerEnd:6}]},
+      {id:'short-windsor',name:'Short Windsor',type:'imperial',defaultZones:5,totalArrows:108,
+        distances:[{label:'50 yds',arrows:36,arrowsPerEnd:6},{label:'40 yds',arrows:36,arrowsPerEnd:6},{label:'30 yds',arrows:36,arrowsPerEnd:6}]},
+      {id:'junior-windsor',name:'Junior Windsor',type:'imperial',defaultZones:5,totalArrows:108,
+        distances:[{label:'40 yds',arrows:36,arrowsPerEnd:6},{label:'30 yds',arrows:36,arrowsPerEnd:6},{label:'20 yds',arrows:36,arrowsPerEnd:6}]},
+      {id:'american',name:'American',type:'imperial',defaultZones:5,totalArrows:90,
+        distances:[{label:'60 yds',arrows:30,arrowsPerEnd:6},{label:'50 yds',arrows:30,arrowsPerEnd:6},{label:'40 yds',arrows:30,arrowsPerEnd:6}]},
+      // METRIC
+      {id:'wa-18m',name:'WA 18m (Indoor)',type:'metric',defaultZones:10,totalArrows:60,
+        distances:[{label:'18m',arrows:60,arrowsPerEnd:3}]},
+      {id:'wa-25m',name:'WA 25m (Indoor)',type:'metric',defaultZones:10,totalArrows:60,
+        distances:[{label:'25m',arrows:60,arrowsPerEnd:3}]},
+      {id:'wa-30m',name:'WA 30m',type:'metric',defaultZones:10,totalArrows:72,
+        distances:[{label:'30m',arrows:72,arrowsPerEnd:6}]},
+      {id:'wa-50m',name:'WA 50m',type:'metric',defaultZones:10,totalArrows:72,
+        distances:[{label:'50m',arrows:72,arrowsPerEnd:6}]},
+      {id:'wa-60m',name:'WA 60m',type:'metric',defaultZones:10,totalArrows:72,
+        distances:[{label:'60m',arrows:72,arrowsPerEnd:6}]},
+      {id:'wa-70m',name:'WA 70m',type:'metric',defaultZones:10,totalArrows:72,
+        distances:[{label:'70m',arrows:72,arrowsPerEnd:6}]},
+      {id:'metric1',name:'Metric I',type:'metric',defaultZones:10,totalArrows:288,
+        distances:[{label:'90m',arrows:72,arrowsPerEnd:6},{label:'70m',arrows:72,arrowsPerEnd:6},{label:'50m',arrows:72,arrowsPerEnd:6},{label:'30m',arrows:72,arrowsPerEnd:6}]},
+      {id:'metric2',name:'Metric II',type:'metric',defaultZones:10,totalArrows:288,
+        distances:[{label:'70m',arrows:72,arrowsPerEnd:6},{label:'60m',arrows:72,arrowsPerEnd:6},{label:'50m',arrows:72,arrowsPerEnd:6},{label:'30m',arrows:72,arrowsPerEnd:6}]},
+      {id:'metric3',name:'Metric III',type:'metric',defaultZones:10,totalArrows:288,
+        distances:[{label:'60m',arrows:72,arrowsPerEnd:6},{label:'50m',arrows:72,arrowsPerEnd:6},{label:'40m',arrows:72,arrowsPerEnd:6},{label:'30m',arrows:72,arrowsPerEnd:6}]},
+    ];
+
+    // ── STORAGE ───────────────────────────────────────────────────────────────
+    const SK='archery_v1';
+    function loadSessions(){try{return JSON.parse(localStorage.getItem(SK)||'[]')}catch{return[]}}
+    function saveSession(s){const a=loadSessions();const i=a.findIndex(x=>x.id===s.id);if(i>=0)a[i]=s;else a.unshift(s);localStorage.setItem(SK,JSON.stringify(a))}
+    function deleteSess(id){localStorage.setItem(SK,JSON.stringify(loadSessions().filter(s=>s.id!==id)))}
+
+    // ── SCORING UTILS ─────────────────────────────────────────────────────────
+    const av=s=>s==='X'?10:(s==='M'||s==null?0:Number(s));
+    const isGold=(s,z)=>s==='X'||(z===10?Number(s)===10:Number(s)===9);
+    function calcEnd(arrows,z){let t=0,h=0,g=0,x=0;for(const a of arrows){const v=av(a);t+=v;if(v>0)h++;if(a==='X')x++;if(isGold(a,z))g++}return{total:t,hits:h,golds:g,xs:x}}
+    function calcArcher(sess,aid){const{ends,scoringZones:z}=sess;const ae=ends.filter(e=>e.archerId===aid);let t=0,h=0,g=0,x=0;const ee=ae.map(e=>{const s=calcEnd(e.arrows,z);t+=s.total;h+=s.hits;g+=s.golds;x+=s.xs;return{...e,...s}});return{total:t,hits:h,golds:g,xs:x,ends:ee}}
+    function nextStep(sess){const{round,archers,ends}=sess;const done=new Set(ends.map(e=>`${e.archerId}|${e.distanceIndex}|${e.endIndex}`));for(let d=0;d<round.distances.length;d++){const nd=round.distances[d].arrows/round.distances[d].arrowsPerEnd;for(let e=0;e<nd;e++){for(const a of archers){if(!done.has(`${a.id}|${d}|${e}`))return{archerId:a.id,distanceIndex:d,endIndex:e}}}}return null}
+    function totalEnds(r){return r.distances.reduce((a,d)=>a+d.arrows/d.arrowsPerEnd,0)}
+    function completedEnds(sess){const{round,archers,ends}=sess;let c=0;for(let d=0;d<round.distances.length;d++){const ne=round.distances[d].arrows/round.distances[d].arrowsPerEnd;for(let e=0;e<ne;e++){if(archers.every(a=>ends.some(x=>x.archerId===a.id&&x.distanceIndex===d&&x.endIndex===e)))c++}}return c}
+    function genId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
+    function fmtDate(iso){return new Date(iso).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})}
+
+    // ── COLOURS ───────────────────────────────────────────────────────────────
+    const C10={'X':{bg:'#ffd700',fg:'#1a1a00',lbl:'X'},10:{bg:'#ffd700',fg:'#1a1a00',lbl:'10'},9:{bg:'#ffd700',fg:'#1a1a00',lbl:'9'},8:{bg:'#cc0000',fg:'#fff',lbl:'8'},7:{bg:'#cc0000',fg:'#fff',lbl:'7'},6:{bg:'#0047ab',fg:'#fff',lbl:'6'},5:{bg:'#0047ab',fg:'#fff',lbl:'5'},4:{bg:'#222',fg:'#fff',lbl:'4'},3:{bg:'#222',fg:'#fff',lbl:'3'},2:{bg:'#e8e8e8',fg:'#333',lbl:'2'},1:{bg:'#e8e8e8',fg:'#333',lbl:'1'},'M':{bg:'#4b5563',fg:'#fff',lbl:'M'}};
+    const C5={9:{bg:'#ffd700',fg:'#1a1a00',lbl:'9'},7:{bg:'#cc0000',fg:'#fff',lbl:'7'},5:{bg:'#0047ab',fg:'#fff',lbl:'5'},3:{bg:'#222',fg:'#fff',lbl:'3'},1:{bg:'#e8e8e8',fg:'#333',lbl:'1'},'M':{bg:'#4b5563',fg:'#fff',lbl:'M'}};
+    const sc=(s,z)=>(z===10?C10:C5)[s]||{bg:'#4b5563',fg:'#fff',lbl:String(s)};
+    const S10=['X',10,9,8,7,6,5,4,3,2,1,'M'];
+    const S5=[9,7,5,3,1,'M'];
+
+    // ── TARGET SVG ────────────────────────────────────────────────────────────
+    function Target({size=48}){return(
+      <svg viewBox="0 0 48 48" width={size} height={size}>
+        <circle cx="24" cy="24" r="22" fill="#e8e8e8"/>
+        <circle cx="24" cy="24" r="17" fill="#222"/>
+        <circle cx="24" cy="24" r="12" fill="#0047ab"/>
+        <circle cx="24" cy="24" r="7"  fill="#cc0000"/>
+        <circle cx="24" cy="24" r="3"  fill="#ffd700"/>
+      </svg>
+    )}
+
+    // ── HOME ──────────────────────────────────────────────────────────────────
+    function HomeScreen({sessions,onNew,onView,onDelete}){
+      return(
+        <div className="flex flex-col h-full bg-range-900 screen-enter">
+          <div className="flex flex-col items-center pt-14 pb-6 px-6">
+            <Target size={56}/>
+            <h1 className="mt-4 text-3xl font-extrabold tracking-tight text-white">Archery Scorer</h1>
+            <p className="mt-1 text-sm text-green-400 font-medium">UK Target Shooting</p>
+          </div>
+          <div className="px-6">
+            <button onClick={onNew} className="w-full py-4 bg-gold-500 active:bg-gold-600 text-range-950 font-bold text-lg rounded-2xl shadow-lg">
+              Start New Round
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto mt-6 px-6 pb-8">
+            {sessions.length>0?(
+              <>
+                <p className="text-xs font-semibold uppercase tracking-widest text-green-500 mb-3">Recent Rounds</p>
+                <div className="space-y-3">
+                  {sessions.map(s=><SessionCard key={s.id} session={s} onView={()=>onView(s)} onDelete={()=>onDelete(s.id)}/>)}
+                </div>
+              </>
+            ):(
+              <div className="flex flex-col items-center justify-center h-40 text-green-700 text-sm gap-2">
+                <Target size={28}/>
+                <p>No rounds yet — tap <span className="text-gold-500 font-semibold">Start New Round</span></p>
+              </div>
+            )}
+          </div>
+        </div>
+      )
+    }
+
+    function SessionCard({session:s,onView,onDelete}){
+      const stats=s.archers.map(a=>({a,st:calcArcher(s,a.id)}));
+      return(
+        <div className="bg-range-800 rounded-2xl overflow-hidden border border-range-600">
+          <button onClick={onView} className="w-full text-left px-4 pt-4 pb-3 active:bg-range-700">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="font-semibold text-white text-base">{s.round.name}</p>
+                <p className="text-xs text-green-400 mt-0.5">{fmtDate(s.createdAt)} · {s.scoringZones}-zone</p>
+              </div>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.isComplete?'bg-green-900 text-green-300':'bg-amber-900 text-amber-300'}`}>
+                {s.isComplete?'Complete':'In Progress'}
+              </span>
+            </div>
+            <div className="mt-3 space-y-1">
+              {stats.map(({a,st})=>(
+                <div key={a.id} className="flex justify-between">
+                  <span className="text-sm text-green-300">{a.name} · {a.bowType}</span>
+                  <span className="text-sm font-bold text-gold-400">{st.total}</span>
+                </div>
+              ))}
+            </div>
+          </button>
+          <div className="border-t border-range-600 flex">
+            <button onClick={onDelete} className="flex-1 py-2.5 text-xs text-red-400 font-medium">Delete</button>
+            <div className="w-px bg-range-600"/>
+            <button onClick={onView} className="flex-1 py-2.5 text-xs text-gold-400 font-medium">View →</button>
+          </div>
+        </div>
+      )
+    }
+
+    // ── SETUP ─────────────────────────────────────────────────────────────────
+    function SetupScreen({onStart,onBack}){
+      const [count,setCount]=useState(1);
+      const [archers,setArchers]=useState([{id:genId(),name:'',bowType:'Recurve'},{id:genId(),name:'',bowType:'Recurve'}]);
+      const [rid,setRid]=useState('');
+      const [zones,setZones]=useState(null);
+      const [filter,setFilter]=useState('all');
+      const [dist252,setDist252]=useState('');
+      const [incl252,setIncl252]=useState(false);
+      const [err,setErr]=useState({});
+      const round=ROUNDS.find(r=>r.id===rid);
+      const effZ=zones??round?.defaultZones??10;
+      const list=filter==='252'||filter==='all'?ROUNDS:ROUNDS.filter(r=>r.type===filter);
+      const firstDist=round?.distances[0];
+      const maxArrows252=round?archers.slice(0,count).reduce((mx,a)=>Math.max(mx,ARROWS_252[a.bowType]||36),0):0;
+      const can252=filter==='imperial'&&!!round&&(firstDist?.arrows||0)>=maxArrows252&&!!AWARD_252[firstDist?.label];
+      const upd=(i,f,v)=>setArchers(p=>p.map((a,j)=>j===i?{...a,[f]:v}:a));
+      const switchFilter=v=>{setFilter(v);setRid('');setDist252('');setZones(null);setIncl252(false);if(v==='252')setCount(1)};
+      const go=()=>{
+        const e={};
+        for(let i=0;i<count;i++)if(!archers[i].name.trim())e[i]=1;
+        if(filter!=='252'&&!rid)e.r=1;
+        if(filter==='252'&&!dist252)e.r=1;
+        if(Object.keys(e).length){setErr(e);return}
+        let sessionRound;
+        if(filter==='252'){
+          const bt=archers[0].bowType;
+          const arr=ARROWS_252[bt]||36;
+          sessionRound={id:`252-${dist252.replace(/\s/g,'')}`,name:`252 Award — ${dist252}`,type:'252',defaultZones:get252Zones(bt),is252:true,target252:get252Target(bt,dist252),award252:AWARD_252[dist252],totalArrows:arr,distances:[{label:dist252,arrows:arr,arrowsPerEnd:6}]};
+        }else{
+          sessionRound=round;
+        }
+        onStart({id:genId(),createdAt:new Date().toISOString(),archers:archers.slice(0,count).map(a=>({...a,name:a.name.trim()})),round:sessionRound,scoringZones:filter==='252'?get252Zones(archers[0].bowType):effZ,ends:[],isComplete:false,has252:filter!=='252'&&can252&&incl252})
+      };
+      return(
+        <div className="flex flex-col h-full bg-range-900 screen-enter">
+          <div className="flex items-center px-4 pt-12 pb-4 border-b border-range-700">
+            <button onClick={onBack} className="p-2 -ml-2 text-green-400">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/></svg>
+            </button>
+            <h1 className="ml-2 text-xl font-bold text-white">New Round</h1>
+          </div>
+          <div className="flex-1 overflow-y-auto px-4 pb-6 pt-5 space-y-6">
+
+            <Sec title="Archers">
+              <div className="flex gap-3">
+                {[1,2].map(n=>(
+                  <button key={n} onClick={()=>filter!=='252'&&setCount(n)} className={`flex-1 py-3 rounded-xl font-semibold border-2 transition-colors ${count===n?'bg-gold-500 border-gold-500 text-range-950':'bg-range-800 border-range-600 text-green-300'} ${filter==='252'&&n===2?'opacity-30':''}`}>
+                    {n===1?'Solo':'Pair'}
+                  </button>
+                ))}
+              </div>
+            </Sec>
+
+            <Sec title="Archer Details">
+              {Array.from({length:count}).map((_,i)=>(
+                <div key={archers[i].id} className="space-y-2 mb-4 last:mb-0">
+                  {count>1&&<p className="text-xs font-semibold text-green-500 uppercase tracking-wider">Archer {i+1}</p>}
+                  <input type="text" placeholder="Name" value={archers[i].name}
+                    onChange={e=>{upd(i,'name',e.target.value);setErr(p=>({...p,[i]:0}))}}
+                    className={`w-full bg-range-800 border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-gold-500 ${err[i]?'border-red-500':'border-range-600'}`}/>
+                  {err[i]?<p className="text-xs text-red-400">Name required</p>:null}
+                  <div className="relative">
+                    <select value={archers[i].bowType} onChange={e=>upd(i,'bowType',e.target.value)}
+                      className="w-full bg-range-800 border border-range-600 rounded-xl px-4 py-3 text-white focus:outline-none appearance-none">
+                      {BOW_TYPES.map(b=><option key={b}>{b}</option>)}
+                    </select>
+                    <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500 pointer-events-none" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                  </div>
+                </div>
+              ))}
+            </Sec>
+
+            <Sec title="Round">
+              <div className="flex gap-1 mb-3 bg-range-800 rounded-xl p-1">
+                {[['all','All'],['imperial','Imperial'],['metric','Metric'],['252','252']].map(([v,l])=>(
+                  <button key={v} onClick={()=>switchFilter(v)} className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter===v?'bg-range-600 text-white':'text-green-500'}`}>{l}</button>
+                ))}
+              </div>
+              {filter==='252'?(
+                <>
+                  <div className="grid grid-cols-4 gap-2">
+                    {DIST_252.map(d=>(
+                      <button key={d} onClick={()=>{setDist252(d);setErr(p=>({...p,r:0}))}}
+                        className={`py-2.5 rounded-xl text-sm font-semibold border-2 transition-colors ${dist252===d?'bg-gold-500 border-gold-500 text-range-950':'bg-range-800 border-range-600 text-white'}`}>
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                  {err.r===1&&<p className="text-xs text-red-400 mt-1">Please select a distance</p>}
+                  {dist252&&(()=>{
+                    const bt=archers[0].bowType,arr=ARROWS_252[bt]||36,tgt=get252Target(bt,dist252),awd=AWARD_252[dist252];
+                    return(
+                      <div className="mt-3 bg-range-800 rounded-xl px-4 py-3 border border-range-600 space-y-2">
+                        <div className="flex justify-between text-sm"><span className="text-green-400">Award</span><span className="text-white font-semibold">{awd} Badge</span></div>
+                        <div className="flex justify-between text-sm"><span className="text-green-400">Arrows</span><span className="text-white font-semibold">{arr} ({DOZ_252[arr]})</span></div>
+                        <div className="flex justify-between text-sm"><span className="text-green-400">Target score</span><span className="text-gold-400 font-bold">{tgt}+</span></div>
+                        <div className="flex justify-between text-sm"><span className="text-green-400">Scoring</span><span className="text-white">{get252Zones(bt)}-zone · 5 sighter arrows permitted</span></div>
+                      </div>
+                    )
+                  })()}
+                </>
+              ):(
+                <>
+                  <div className="relative">
+                    <select value={rid} onChange={e=>{setRid(e.target.value);setZones(null);setErr(p=>({...p,r:0}))}}
+                      className={`w-full bg-range-800 border rounded-xl px-4 py-3 text-white focus:outline-none appearance-none ${err.r?'border-red-500':'border-range-600'}`}>
+                      <option value="">Select a round…</option>
+                      {list.map(r=><option key={r.id} value={r.id}>{r.name}{r.note?` (${r.note})`:''} — {r.totalArrows} arrows</option>)}
+                    </select>
+                    <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500 pointer-events-none" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                  </div>
+                  {err.r===1&&<p className="text-xs text-red-400 mt-1">Please select a round</p>}
+                  {round&&(
+                    <div className="mt-3 bg-range-800 rounded-xl px-4 py-3 space-y-1 border border-range-600">
+                      {round.distances.map((d,i)=>(
+                        <div key={i} className="flex justify-between text-sm">
+                          <span className="font-medium text-white">{d.label}</span>
+                          <span className="text-green-500">{d.arrows} arrows · {d.arrows/d.arrowsPerEnd} ends of {d.arrowsPerEnd}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {can252&&(
+                    <label className="flex items-center gap-3 mt-2 px-4 py-3 bg-range-800 rounded-xl border border-range-600 cursor-pointer select-none">
+                      <input type="checkbox" checked={incl252} onChange={e=>setIncl252(e.target.checked)} className="w-4 h-4 accent-gold-500 flex-none"/>
+                      <div className="flex-1">
+                        <p className="text-white font-semibold text-sm">Include 252 attempt</p>
+                        <p className="text-green-500 text-xs">First arrows at {firstDist?.label}</p>
+                      </div>
+                    </label>
+                  )}
+                  {can252&&incl252&&(
+                    <div className="mt-2 bg-range-800 rounded-xl px-4 py-3 border border-range-600">
+                      {archers.slice(0,count).map((a,i)=>{
+                        const tgt=get252Target(a.bowType,firstDist.label);
+                        const awd=AWARD_252[firstDist.label];
+                        const arr=ARROWS_252[a.bowType]||36;
+                        return(
+                          <div key={i} className={i>0?'border-t border-range-700 pt-2 mt-2':''}>
+                            {count>1&&<p className="text-xs text-green-500 font-semibold mb-1">{a.name||`Archer ${i+1}`} · {a.bowType}</p>}
+                            <div className="flex justify-between text-sm">
+                              <span className="text-green-400">{awd} Badge · {arr} arrows</span>
+                              <span className="text-gold-400 font-bold">Target: {tgt}+</span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
+            </Sec>
+
+            {filter!=='252'&&(
+            <Sec title="Scoring Zones">
+              <div className="flex gap-3">
+                {[{v:5,l:'5-zone',s:'Imperial · 9·7·5·3·1'},{v:10,l:'10-zone',s:'Metric · 10–1 + X'}].map(o=>(
+                  <button key={o.v} onClick={()=>setZones(o.v)} className={`flex-1 py-3 px-2 rounded-xl border-2 text-center transition-colors ${effZ===o.v?'bg-gold-500 border-gold-500 text-range-950':'bg-range-800 border-range-600 text-green-300'}`}>
+                    <p className="font-bold text-sm">{o.l}</p>
+                    <p className={`text-xs mt-0.5 ${effZ===o.v?'text-range-800':'text-green-600'}`}>{o.s}</p>
+                  </button>
+                ))}
+              </div>
+              {round&&!zones&&<p className="text-xs text-green-600 mt-2 text-center">Auto-set from round · tap to override</p>}
+            </Sec>
+            )}
+
+          </div>
+          <div className="px-4 py-4 border-t border-range-700">
+            <button onClick={go} className="w-full py-4 bg-gold-500 active:bg-gold-600 text-range-950 font-bold text-lg rounded-2xl">Start Shooting</button>
+          </div>
+        </div>
+      )
+    }
+    function Sec({title,children}){return<div><p className="text-xs font-semibold uppercase tracking-widest text-green-500 mb-3">{title}</p>{children}</div>}
+
+    // ── SCORING ───────────────────────────────────────────────────────────────
+    function ScoringScreen({session,onUpdate,onComplete,onBack}){
+      const [curr,setCurr]=useState([]);
+      const [arrowPos,setArrowPos]=useState([]);
+      const [targetMode,setTargetMode]=useState(false);
+      const [summary,setSummary]=useState(null);
+      const nxt=nextStep(session);
+
+      // Round complete — keep rendering only so the summary overlay can show
+      if(!nxt){
+        if(!summary)return null;
+        const z=session.scoringZones;
+        return(
+          <div className="flex flex-col h-full bg-range-900" style={{position:'relative'}}>
+            <div style={{position:'absolute',inset:0,backgroundColor:'rgba(0,0,0,.8)',display:'flex',alignItems:'flex-end',zIndex:20}}>
+              <div className="w-full bg-range-800 rounded-t-3xl px-6 pt-6 pb-10 screen-enter">
+                <div className="w-12 h-1 bg-range-600 rounded-full mx-auto mb-5"/>
+                <h2 className="text-2xl font-extrabold text-white text-center mb-1">🎯 Round Complete!</h2>
+                <p className="text-green-400 text-sm text-center mb-5">{summary.archerName}</p>
+                <div className="flex gap-2 justify-center mb-5">
+                  {summary.arrows.map((a,i)=>{const col=sc(a,z);return(
+                    <div key={i} className="w-11 h-11 rounded-xl flex items-center justify-center font-bold text-sm" style={{backgroundColor:col.bg,color:col.fg}}>{col.lbl}</div>
+                  )})}
+                </div>
+                <div className="flex justify-around mb-7">
+                  <div className="text-center"><p className="text-3xl font-extrabold text-gold-400">{summary.total}</p><p className="text-xs text-green-500 mt-1">End Total</p></div>
+                  <div className="text-center"><p className="text-2xl font-bold text-white">{summary.hits}</p><p className="text-xs text-green-500 mt-1">Hits</p></div>
+                  <div className="text-center"><p className="text-2xl font-bold text-white">{summary.golds}</p><p className="text-xs text-green-500 mt-1">Golds</p></div>
+                  {z===10&&<div className="text-center"><p className="text-2xl font-bold text-white">{summary.xs}</p><p className="text-xs text-green-500 mt-1">Xs</p></div>}
+                </div>
+                {summary.positions&&summary.positions.length>0&&(()=>{
+                  const pos=summary.positions;
+                  const ax=pos.reduce((s,p)=>s+p.x,0)/pos.length;
+                  const ay=pos.reduce((s,p)=>s+p.y,0)/pos.length;
+                  const arm=0.13;
+                  return(
+                    <div className="mb-5">
+                      <p className="text-xs text-green-500 text-center mb-2">Group centre</p>
+                      <svg viewBox="-1.15 -1.15 2.3 2.3" style={{width:'180px',height:'180px',display:'block',margin:'0 auto'}}>
+                        <circle cx="0" cy="0" r="1.15" fill="#2d2d2d"/>
+                        {[{r:1.00,f:'#e8e8e8'},{r:0.80,f:'#222'},{r:0.60,f:'#0047ab'},{r:0.40,f:'#cc0000'},{r:0.20,f:'#ffd700'}].map((rn,i)=>(
+                          <circle key={i} cx="0" cy="0" r={rn.r} fill={rn.f}/>
+                        ))}
+                        {pos.map((p,i)=>(
+                          <circle key={i} cx={p.x} cy={p.y} r="0.07" fill="#22c55e" stroke="#000" strokeWidth="0.02" opacity="0.85"/>
+                        ))}
+                        <line x1={ax-arm} y1={ay} x2={ax+arm} y2={ay} stroke="#ffd700" strokeWidth="0.045" strokeLinecap="round"/>
+                        <line x1={ax} y1={ay-arm} x2={ax} y2={ay+arm} stroke="#ffd700" strokeWidth="0.045" strokeLinecap="round"/>
+                      </svg>
+                    </div>
+                  );
+                })()}
+                <button onClick={()=>{setSummary(null);onComplete();}}
+                  className="w-full py-4 bg-gold-500 active:bg-gold-600 text-range-950 font-bold text-lg rounded-2xl">
+                  View Results →
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      const{archerId,distanceIndex,endIndex}=nxt;
+      const archer=session.archers.find(a=>a.id===archerId);
+      const dist=session.round.distances[distanceIndex];
+      const ape=dist.arrowsPerEnd;
+      const z=session.scoringZones;
+      const scores=z===10?S10:S5;
+      const te=totalEnds(session.round);
+      const ce=completedEnds(session);
+      const endsAtDist=dist.arrows/ape;
+      const running=calcArcher(session,archerId).total;
+      const prevEnds=session.ends.filter(e=>e.archerId===archerId);
+      const endStats=curr.length>0?calcEnd(curr,z):null;
+
+      const add=(s,x=null,y=null)=>{if(curr.length<ape){setCurr(p=>[...p,s]);if(x!==null)setArrowPos(p=>[...p,{x,y}])}};
+      const undo=()=>{setCurr(p=>p.slice(0,-1));setArrowPos(p=>p.slice(0,-1))};
+      const submit=()=>{
+        const stats=calcEnd(curr,z);
+        const ne={archerId,distanceIndex,endIndex,arrows:[...curr],...(arrowPos.length?{positions:[...arrowPos]}:{})};
+        const upd={...session,ends:[...session.ends,ne]};
+        if(!nextStep(upd))upd.isComplete=true;
+        onUpdate(upd);
+        setSummary({...stats,archerName:archer.name,endIndex,dist,arrows:[...curr],positions:[...arrowPos]});
+        setCurr([]);setArrowPos([]);
+      };
+      const dismiss=()=>{setSummary(null);if(session.isComplete)onComplete()};
+      const archerBars=session.archers.map(a=>({a,t:calcArcher(session,a.id).total}));
+
+      return(
+        <div className="flex flex-col h-full bg-range-900 screen-enter" style={{position:'relative'}}>
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 pt-10 pb-3 bg-range-800 border-b border-range-600">
+            <button onClick={onBack} className="p-1 text-green-500">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+            <div className="text-center">
+              <p className="text-white font-bold text-base leading-tight">{session.round.name}</p>
+              <p className="text-green-400 text-xs">{dist.label} · End {ce+1}/{te}</p>
+            </div>
+            <button onClick={()=>setTargetMode(m=>!m)}
+              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${targetMode?'bg-gold-500':'bg-range-700'}`}
+              title={targetMode?'Switch to buttons':'Switch to target diagram'}>
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
+                <circle cx="12" cy="12" r="10" stroke={targetMode?'#071910':'#6ee7b7'} strokeWidth="1.5"/>
+                <circle cx="12" cy="12" r="7" stroke={targetMode?'#071910':'#6ee7b7'} strokeWidth="1.5"/>
+                <circle cx="12" cy="12" r="4" stroke={targetMode?'#071910':'#6ee7b7'} strokeWidth="1.5"/>
+                <circle cx="12" cy="12" r="1.5" fill={targetMode?'#071910':'#6ee7b7'}/>
+              </svg>
+            </button>
+          </div>
+          {/* Progress bar */}
+          <div className="h-1 bg-range-700"><div className="h-full bg-gold-500 transition-all duration-500" style={{width:`${(ce/te)*100}%`}}/></div>
+          {/* Pair scores */}
+          {session.archers.length>1&&(
+            <div className="flex border-b border-range-700">
+              {archerBars.map(({a,t})=>(
+                <div key={a.id} className={`flex-1 py-2 px-3 text-center ${a.id===archerId?'bg-range-800':'bg-range-900'}`}>
+                  <p className={`text-xs font-medium truncate ${a.id===archerId?'text-gold-400':'text-green-700'}`}>{a.name}</p>
+                  <p className={`font-bold text-xl leading-tight ${a.id===archerId?'text-white':'text-green-800'}`}>{t}</p>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Archer + running total */}
+          <div className="px-4 py-3 flex items-center justify-between">
+            <div>
+              <p className="text-white font-semibold text-base">{archer.name}</p>
+              <p className="text-green-400 text-xs">{archer.bowType} · {dist.label}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-gold-400 font-bold text-2xl leading-none">{running}</p>
+              <p className="text-green-600 text-xs mt-0.5">running total</p>
+            </div>
+          </div>
+          {/* Arrow slots */}
+          <div className="px-4 pb-2">
+            <div className="grid gap-2" style={{gridTemplateColumns:`repeat(${ape},1fr)`}}>
+              {Array.from({length:ape}).map((_,i)=>{
+                const s=curr[i];const isNext=i===curr.length;const col=s!=null?sc(s,z):null;
+                return(
+                  <div key={i} className={`arrow-slot h-10 ${isNext?'slot-active':''}`}
+                    style={col?{backgroundColor:col.bg,color:col.fg,borderColor:'transparent'}:{borderColor:isNext?'#d4a017':'#1e4d2b',color:'#1e4d2b'}}>
+                    {col?col.lbl:<span className="text-xs">{i+1}</span>}
+                  </div>
+                )
+              })}
+            </div>
+            {endStats&&(
+              <div className="flex justify-between mt-2 text-xs text-green-500">
+                <span>End: <b className="text-white">{endStats.total}</b></span>
+                <span>Hits: <b className="text-white">{endStats.hits}</b></span>
+                <span>Golds: <b className="text-white">{endStats.golds}</b></span>
+              </div>
+            )}
+          </div>
+          {/* Score buttons or target diagram */}
+          {targetMode?(
+            <div className="flex-1 flex items-center justify-center px-4 pb-2 min-h-0">
+              <TargetDiagram zones={z} arrows={curr} positions={arrowPos} disabled={curr.length>=ape} onTap={add}/>
+            </div>
+          ):(
+            <div className="flex-1 flex flex-col justify-end px-4 pb-2">
+              <div className={`grid gap-2 ${z===10?'grid-cols-6':'grid-cols-3'}`}>
+                {scores.map(s=>{const col=sc(s,z);return(
+                  <button key={s} onClick={()=>add(s)} disabled={curr.length>=ape}
+                    className="score-btn h-14 disabled:opacity-30 text-sm"
+                    style={{backgroundColor:col.bg,color:col.fg}}>{col.lbl}</button>
+                )})}
+              </div>
+            </div>
+          )}
+          {/* Undo + Submit */}
+          <div className="px-4 pb-5 pt-2 flex gap-3">
+            <button onClick={undo} disabled={curr.length===0} className="py-3 px-5 bg-range-700 active:bg-range-600 text-white rounded-xl font-semibold disabled:opacity-30">← Undo</button>
+            <button onClick={submit} disabled={curr.length<ape} className="flex-1 py-3 bg-gold-500 active:bg-gold-600 text-range-950 font-bold rounded-xl disabled:opacity-30">
+              Submit End {endIndex+1}/{endsAtDist}
+            </button>
+          </div>
+          {/* Previous ends log */}
+          {prevEnds.length>0&&(
+            <div className="border-t border-range-700 bg-range-950 px-4 py-2" style={{maxHeight:88,overflowY:'auto'}}>
+              <p className="text-xs text-green-700 mb-1 font-medium">Previous Ends</p>
+              <div className="space-y-1">
+                {[...prevEnds].reverse().map((end,i)=>{
+                  const st=calcEnd(end.arrows,z);
+                  return(
+                    <div key={i} className="flex items-center justify-between text-xs">
+                      <div className="flex gap-1">
+                        {end.arrows.map((a,j)=>{const col=sc(a,z);return(
+                          <span key={j} className="w-6 h-6 rounded flex items-center justify-center font-bold text-xs" style={{backgroundColor:col.bg,color:col.fg}}>{col.lbl}</span>
+                        )})}
+                      </div>
+                      <span className="text-gold-400 font-bold ml-2">{st.total}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+          {/* End summary overlay */}
+          {summary&&(
+            <div style={{position:'absolute',inset:0,backgroundColor:'rgba(0,0,0,.75)',display:'flex',alignItems:'flex-end',zIndex:20}}>
+              <div className="w-full bg-range-800 rounded-t-3xl px-6 pt-6 pb-10 screen-enter">
+                <div className="w-12 h-1 bg-range-600 rounded-full mx-auto mb-5"/>
+                <h2 className="text-xl font-bold text-white text-center mb-1">
+                  {session.isComplete?'🎯 Round Complete!':`End ${summary.endIndex+1} — ${summary.dist.label}`}
+                </h2>
+                <p className="text-green-400 text-sm text-center mb-5">{summary.archerName}</p>
+                <div className="flex gap-2 justify-center mb-5">
+                  {summary.arrows.map((a,i)=>{const col=sc(a,z);return(
+                    <div key={i} className="w-11 h-11 rounded-xl flex items-center justify-center font-bold text-sm" style={{backgroundColor:col.bg,color:col.fg}}>{col.lbl}</div>
+                  )})}
+                </div>
+                <div className="flex justify-around mb-6">
+                  <div className="text-center"><p className="text-3xl font-extrabold text-gold-400">{summary.total}</p><p className="text-xs text-green-500">End Total</p></div>
+                  <div className="text-center"><p className="text-2xl font-bold text-white">{summary.hits}</p><p className="text-xs text-green-500">Hits</p></div>
+                  <div className="text-center"><p className="text-2xl font-bold text-white">{summary.golds}</p><p className="text-xs text-green-500">Golds</p></div>
+                  {z===10&&<div className="text-center"><p className="text-2xl font-bold text-white">{summary.xs}</p><p className="text-xs text-green-500">Xs</p></div>}
+                </div>
+                {summary.positions&&summary.positions.length>0&&(()=>{
+                  const pos=summary.positions;
+                  const ax=pos.reduce((s,p)=>s+p.x,0)/pos.length;
+                  const ay=pos.reduce((s,p)=>s+p.y,0)/pos.length;
+                  const arm=0.13;
+                  return(
+                    <div className="mb-5">
+                      <p className="text-xs text-green-500 text-center mb-2">Group centre</p>
+                      <svg viewBox="-1.15 -1.15 2.3 2.3" style={{width:'180px',height:'180px',display:'block',margin:'0 auto'}}>
+                        <circle cx="0" cy="0" r="1.15" fill="#2d2d2d"/>
+                        {[{r:1.00,f:'#e8e8e8'},{r:0.80,f:'#222'},{r:0.60,f:'#0047ab'},{r:0.40,f:'#cc0000'},{r:0.20,f:'#ffd700'}].map((rn,i)=>(
+                          <circle key={i} cx="0" cy="0" r={rn.r} fill={rn.f}/>
+                        ))}
+                        {pos.map((p,i)=>(
+                          <circle key={i} cx={p.x} cy={p.y} r="0.07" fill="#22c55e" stroke="#000" strokeWidth="0.02" opacity="0.85"/>
+                        ))}
+                        <line x1={ax-arm} y1={ay} x2={ax+arm} y2={ay} stroke="#ffd700" strokeWidth="0.045" strokeLinecap="round"/>
+                        <line x1={ax} y1={ay-arm} x2={ax} y2={ay+arm} stroke="#ffd700" strokeWidth="0.045" strokeLinecap="round"/>
+                      </svg>
+                    </div>
+                  );
+                })()}
+                <button onClick={dismiss} className="w-full py-4 bg-gold-500 active:bg-gold-600 text-range-950 font-bold text-lg rounded-2xl">
+                  {session.isComplete?'View Results':'Next End →'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    // ── TARGET DIAGRAM ────────────────────────────────────────────────────────
+    function getScoreFromDist(dist,zones){
+      if(zones===10){
+        if(dist<0.05)return'X';if(dist<0.10)return 10;if(dist<0.20)return 9;
+        if(dist<0.30)return 8;if(dist<0.40)return 7;if(dist<0.50)return 6;
+        if(dist<0.60)return 5;if(dist<0.70)return 4;if(dist<0.80)return 3;
+        if(dist<0.90)return 2;if(dist<1.00)return 1;return'M';
+      }else{
+        if(dist<0.20)return 9;if(dist<0.40)return 7;if(dist<0.60)return 5;
+        if(dist<0.80)return 3;if(dist<1.00)return 1;return'M';
+      }
+    }
+    function TargetDiagram({zones,arrows,positions,disabled,onTap}){
+      const vb='-1.15 -1.15 2.3 2.3';
+      const rings10=[
+        {r:1.00,fill:'#e8e8e8'},{r:0.80,fill:'#222'},{r:0.60,fill:'#0047ab'},
+        {r:0.40,fill:'#cc0000'},{r:0.20,fill:'#ffd700'}
+      ];
+      const rings5=[
+        {r:1.00,fill:'#e8e8e8'},{r:0.80,fill:'#222'},{r:0.60,fill:'#0047ab'},
+        {r:0.40,fill:'#cc0000'},{r:0.20,fill:'#ffd700'}
+      ];
+      const subLines10=[0.90,0.70,0.50,0.30,0.10];
+      const subLines5 =[0.90,0.70,0.50,0.30,0.10];
+      const rings=zones===10?rings10:rings5;
+      const sub=zones===10?subLines10:subLines5;
+
+      const handleInteraction=(e)=>{
+        if(disabled)return;
+        e.preventDefault();
+        const svg=e.currentTarget;
+        const clientX=e.touches?e.touches[0].clientX:e.clientX;
+        const clientY=e.touches?e.touches[0].clientY:e.clientY;
+        const pt=svg.createSVGPoint();
+        pt.x=clientX; pt.y=clientY;
+        const svgP=pt.matrixTransform(svg.getScreenCTM().inverse());
+        const dist=Math.sqrt(svgP.x*svgP.x+svgP.y*svgP.y);
+        const score=getScoreFromDist(dist,zones);
+        onTap(score,svgP.x,svgP.y);
+      };
+
+      const dotColor='#22c55e';
+
+      return(
+        <svg viewBox={vb} style={{width:'100%',height:'100%',maxHeight:'100%',touchAction:'none',cursor:disabled?'default':'crosshair',userSelect:'none'}}
+          onClick={handleInteraction} onTouchEnd={handleInteraction}>
+          {/* Miss zone background */}
+          <circle cx="0" cy="0" r="1.15" fill="#2d2d2d"/>
+          {/* Colour zones */}
+          {rings.map((r,i)=><circle key={i} cx="0" cy="0" r={r.r} fill={r.fill}/>)}
+          {/* Sub-division lines within each colour band */}
+          {sub.map((r,i)=><circle key={i} cx="0" cy="0" r={r} fill="none" stroke="rgba(128,128,128,0.35)" strokeWidth="0.012"/>)}
+          {/* Zone boundary lines */}
+          {[0.80,0.60,0.40,0.20].map(r=><circle key={r} cx="0" cy="0" r={r} fill="none" stroke="rgba(100,100,100,0.7)" strokeWidth="0.02"/>)}
+          {/* X ring (10-zone only) */}
+          {zones===10&&<circle cx="0" cy="0" r="0.05" fill="none" stroke="rgba(30,20,0,0.6)" strokeWidth="0.015"/>}
+          {/* Crosshair */}
+          <line x1="-0.06" y1="0" x2="0.06" y2="0" stroke="rgba(0,0,0,0.4)" strokeWidth="0.015"/>
+          <line x1="0" y1="-0.06" x2="0" y2="0.06" stroke="rgba(0,0,0,0.4)" strokeWidth="0.015"/>
+          {/* Arrow dots */}
+          {positions.map((p,i)=>p&&(
+            <g key={i}>
+              <circle cx={p.x} cy={p.y} r="0.075" fill={dotColor} stroke="#000" strokeWidth="0.02" opacity="0.92"/>
+              <text x={p.x} y={p.y} textAnchor="middle" dominantBaseline="central" fontSize="0.1" fontWeight="bold" fill="#000" style={{pointerEvents:'none'}}>{i+1}</text>
+            </g>
+          ))}
+          {/* Miss indicator text */}
+          {!disabled&&<text x="0" y="1.08" textAnchor="middle" dominantBaseline="central" fontSize="0.12" fill="rgba(180,180,180,0.6)" style={{pointerEvents:'none'}}>Miss zone</text>}
+        </svg>
+      )
+    }
+
+    // ── RESULTS ───────────────────────────────────────────────────────────────
+    function ResultsScreen({session,onNew,onHome}){
+      const{archers,round,scoringZones:z,isComplete}=session;
+      const maxSc=round.totalArrows*(z===10?10:9);
+      function rcol(s){
+        const v=s==='X'?10:s==='M'?0:Number(s);
+        if(s==='X'||(z===10&&v>=9)||(z===5&&v===9))return{bg:'#ffd700',fg:'#1a1a00'};
+        if((z===10&&v>=7)||(z===5&&v===7))return{bg:'#cc0000',fg:'#fff'};
+        if((z===10&&v>=5)||(z===5&&v===5))return{bg:'#0047ab',fg:'#fff'};
+        if((z===10&&v>=3)||(z===5&&v===3))return{bg:'#222',fg:'#fff'};
+        if(v>=1)return{bg:'#e8e8e8',fg:'#333'};
+        return{bg:'#4b5563',fg:'#fff'};
+      }
+      function albl(s){return String(s)}
+      return(
+        <div className="flex flex-col h-full bg-range-900 screen-enter">
+          <div className="px-4 pt-10 pb-4 bg-range-800 border-b border-range-600">
+            <p className="text-xs text-green-400">{fmtDate(session.createdAt)}</p>
+            <h1 className="text-2xl font-extrabold text-white mt-0.5">{round.name}</h1>
+            <p className="text-green-400 text-sm">{z}-zone · {round.totalArrows} arrows{!isComplete&&<span className="text-amber-400"> · In Progress</span>}</p>
+          </div>
+          <div className="flex-1 overflow-y-auto px-4 pb-8 pt-4 space-y-5">
+            {/* Scorecards */}
+            <div className="grid gap-3" style={{gridTemplateColumns:`repeat(${archers.length},1fr)`}}>
+              {archers.map(a=>{
+                const{total,hits,golds,xs}=calcArcher(session,a.id);
+                const pct=Math.round((total/maxSc)*100);
+                return(
+                  <div key={a.id} className="bg-range-800 rounded-2xl p-4 border border-range-600">
+                    <p className="text-white font-bold text-base truncate">{a.name}</p>
+                    <p className="text-green-500 text-xs mb-3">{a.bowType}</p>
+                    <p className="text-gold-400 text-4xl font-extrabold leading-none">{total}</p>
+                    <p className="text-green-600 text-xs mt-1">{pct}% of {maxSc}</p>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-center">
+                      {[['Hits',hits],['Golds',golds],...(z===10?[['Xs',xs]]:[])].map(([l,v])=>(
+                        <div key={l} className="bg-range-700 rounded-lg py-1.5">
+                          <p className="text-white font-bold">{v}</p>
+                          <p className="text-green-600 text-xs">{l}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            {/* 252 Award badge result */}
+            {round.is252&&(()=>{
+              const{total}=calcArcher(session,archers[0].id);
+              const achieved=total>=round.target252;
+              return(
+                <div className={`rounded-2xl p-4 border-2 ${achieved?'border-green-500 bg-green-950':'border-range-600 bg-range-800'}`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-widest text-green-500 mb-0.5">252 Award</p>
+                      <p className="text-xl font-extrabold text-white">{round.award252} Badge</p>
+                      <p className="text-green-400 text-sm">{round.distances[0].label}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className={`text-5xl font-extrabold leading-none ${achieved?'text-green-400':'text-range-600'}`}>{achieved?'✓':'✗'}</p>
+                      <p className={`text-sm font-bold mt-1 ${achieved?'text-green-400':'text-green-700'}`}>{achieved?'Achieved!':'Not this time'}</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-range-600 flex justify-between text-sm">
+                    <span className="text-green-500">Target score</span>
+                    <span className="text-white font-bold">{round.target252}+</span>
+                  </div>
+                </div>
+              )
+            })()}
+            {/* Embedded 252 result */}
+            {session.has252&&archers.map(a=>{
+              const arr252=ARROWS_252[a.bowType]||36;
+              const ends252Needed=arr252/6;
+              const d0ends=session.ends.filter(e=>e.archerId===a.id&&e.distanceIndex===0&&e.endIndex<ends252Needed);
+              if(d0ends.length<ends252Needed)return null;
+              const sc252=d0ends.reduce((s,e)=>s+calcEnd(e.arrows,z).total,0);
+              const d0label=round.distances[0].label;
+              const tgt=get252Target(a.bowType,d0label);
+              const awd=AWARD_252[d0label];
+              const achieved=sc252>=tgt;
+              return(
+                <div key={a.id} className={`rounded-2xl p-4 border-2 ${achieved?'border-green-500 bg-green-950':'border-range-600 bg-range-800'}`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-widest text-green-500 mb-0.5">252 Award</p>
+                      <p className="text-xl font-extrabold text-white">{awd} Badge</p>
+                      {archers.length>1&&<p className="text-green-400 text-sm">{a.name}</p>}
+                      <p className="text-green-400 text-sm">{d0label}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className={`text-3xl font-extrabold leading-none ${achieved?'text-green-400':'text-white'}`}>{sc252}</p>
+                      <p className={`text-sm font-bold mt-1 ${achieved?'text-green-400':'text-green-700'}`}>{achieved?'✓ Achieved!':'✗ Not achieved'}</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-range-600 flex justify-between text-sm">
+                    <span className="text-green-500">Target score</span>
+                    <span className="text-white font-bold">{tgt}+</span>
+                  </div>
+                </div>
+              )
+            })}
+            {/* End-by-end breakdown */}
+            {archers.map(a=>{
+              const{ends:ee}=calcArcher(session,a.id);
+              if(!ee.length)return null;
+              const byDist=round.distances.map((d,di)=>({d,di,ends:ee.filter(e=>e.distanceIndex===di)})).filter(x=>x.ends.length>0);
+              return(
+                <div key={a.id}>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-green-500 mb-3">{a.name} — End by End</p>
+                  <div className="space-y-3">
+                    {byDist.map(({d,di,ends:de})=>{
+                      const dt=de.reduce((s,e)=>s+e.total,0),dh=de.reduce((s,e)=>s+e.hits,0),dg=de.reduce((s,e)=>s+e.golds,0);
+                      return(
+                        <div key={di} className="bg-range-800 rounded-2xl overflow-hidden border border-range-600">
+                          <div className="flex items-center justify-between px-4 py-2 bg-range-700">
+                            <p className="text-white font-semibold text-sm">{d.label}</p>
+                            <div className="flex gap-3 text-xs">
+                              <span className="text-green-400">Hits:<b className="text-white ml-1">{dh}</b></span>
+                              <span className="text-green-400">Golds:<b className="text-white ml-1">{dg}</b></span>
+                              <span className="text-gold-400 font-bold">{dt}</span>
+                            </div>
+                          </div>
+                          <div className="divide-y divide-range-700">
+                            {Array.from({length:Math.ceil(de.length/2)}).map((_,pi)=>{
+                              const pair=de.slice(pi*2,pi*2+2);
+                              const doz=pair.reduce((s,e)=>s+e.total,0);
+                              return(
+                                <div key={pi}>
+                                  {pair.map((end,i)=>(
+                                    <div key={i} className="flex items-center justify-between px-4 py-2">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-green-700 text-xs w-4">{end.endIndex+1}</span>
+                                        {end.arrows.map((ar,j)=>{const col=rcol(ar);return(
+                                          <span key={j} className="w-7 h-7 rounded-md flex items-center justify-center font-bold text-xs" style={{backgroundColor:col.bg,color:col.fg}}>{albl(ar)}</span>
+                                        )})}
+                                      </div>
+                                      <span className="text-gold-400 font-bold text-sm ml-2">{end.total}</span>
+                                    </div>
+                                  ))}
+                                  {pair.length===2&&pair[0].arrows.length===6&&(
+                                    <div className="flex items-center justify-between px-4 py-1.5 bg-range-700">
+                                      <span className="text-green-500 text-xs">Dozen</span>
+                                      <span className="text-white font-bold text-sm">{doz}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          <div className="px-4 py-4 border-t border-range-700 flex gap-3">
+            <button onClick={onHome} className="py-3 px-5 bg-range-700 active:bg-range-600 text-white rounded-xl font-semibold">Home</button>
+            <button onClick={onNew} className="flex-1 py-3 bg-gold-500 active:bg-gold-600 text-range-950 font-bold rounded-xl">New Round</button>
+          </div>
+        </div>
+      )
+    }
+
+    // ── APP ───────────────────────────────────────────────────────────────────
+    function App(){
+      const [screen,setScreen]=useState('home');
+      const [session,setSession]=useState(null);
+      const [sessions,setSessions]=useState(()=>loadSessions());
+      const refresh=()=>setSessions(loadSessions());
+      const start=s=>{saveSession(s);setSession(s);setScreen('scoring');refresh()};
+      const update=s=>{setSession(s);saveSession(s);if(s.isComplete)refresh()};
+      const complete=()=>{refresh();setScreen('results')};
+      const home=()=>{setSession(null);setScreen('home');refresh()};
+      const view=s=>{setSession(s);setScreen(s.isComplete?'results':'scoring')};
+      return(
+        <div className="relative flex flex-col h-full w-full font-sans">
+          {screen==='home'&&<HomeScreen sessions={sessions} onNew={()=>setScreen('setup')} onView={view} onDelete={id=>{deleteSess(id);refresh()}}/>}
+          {screen==='setup'&&<SetupScreen onStart={start} onBack={home}/>}
+          {screen==='scoring'&&session&&<ScoringScreen session={session} onUpdate={update} onComplete={complete} onBack={home}/>}
+          {screen==='results'&&session&&<ResultsScreen session={session} onNew={()=>setScreen('setup')} onHome={home}/>}
+        </div>
+      )
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>
