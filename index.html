@@ -154,6 +154,13 @@
       return nb;
     }
 
+    // ── SIGHT MARKS ───────────────────────────────────────────────────────────
+    const SM_KEY='archery_sm';
+    const SM_DISTS_IMPERIAL=['10 yds','15 yds','20 yds','25 yds','30 yds','40 yds','50 yds','60 yds','80 yds','100 yds'];
+    const SM_DISTS_METRIC=['18m','20m','25m','30m','40m','50m','60m','70m','90m'];
+    function loadSM(){try{return JSON.parse(localStorage.getItem(SM_KEY)||'{}')}catch{return{}}}
+    function saveSM(data){localStorage.setItem(SM_KEY,JSON.stringify(data))}
+
     // ── SCORING UTILS ─────────────────────────────────────────────────────────
     const av=s=>s==='X'?10:(s==='M'||s==null?0:Number(s));
     const isGold=(s,z)=>s==='X'||(z===10?Number(s)===10:Number(s)===9);
@@ -933,7 +940,7 @@
     }
 
     // ── SIDE MENU ─────────────────────────────────────────────────────────────
-    function SideMenu({open,onClose,onPBs}){
+    function SideMenu({open,onClose,onPBs,onSightMarks}){
       if(!open)return null;
       return(
         <div style={{position:'fixed',inset:0,zIndex:50,display:'flex',justifyContent:'flex-end'}} onClick={onClose}>
@@ -953,6 +960,14 @@
                   <path strokeLinecap="round" strokeLinejoin="round" d="M8 21h8M12 17v4M17 3H7l-1 7a5 5 0 0010 0l-1-7zM5 3H3v4a4 4 0 004 4M19 3h2v4a4 4 0 01-4 4"/>
                 </svg>
                 <span className="text-white font-semibold">Personal Bests</span>
+              </button>
+              <button onClick={onSightMarks} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left active:bg-range-700">
+                <svg className="w-5 h-5 text-green-400 flex-none" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/>
+                  <line x1="12" y1="3" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="21"/>
+                  <line x1="3" y1="12" x2="7" y2="12"/><line x1="17" y1="12" x2="21" y2="12"/>
+                </svg>
+                <span className="text-white font-semibold">Sight Marks</span>
               </button>
             </div>
           </div>
@@ -1093,6 +1108,128 @@
       )
     }
 
+    // ── SIGHT MARKS SCREEN ────────────────────────────────────────────────────
+    function SightMarksScreen({onBack}){
+      // Collect archer names from sessions and existing SM data
+      const sessionNames=[...new Set(loadSessions().flatMap(s=>s.archers.map(a=>a.name)))].sort();
+      const smNames=[...new Set(Object.keys(loadSM()).map(k=>k.split('|')[0]))].sort();
+      const allNames=[...new Set([...sessionNames,...smNames])].sort();
+
+      const [archer,setArcher]=useState(allNames[0]||'');
+      const [newName,setNewName]=useState('');
+      const [addingNew,setAddingNew]=useState(allNames.length===0);
+      const [bow,setBow]=useState('Recurve');
+      const [unit,setUnit]=useState('imperial');
+      const [marks,setMarks]=useState({});
+
+      const effectiveArcher=addingNew?newName.trim():archer;
+      const smKey=`${effectiveArcher}|${bow}|${unit}`;
+      const dists=unit==='imperial'?SM_DISTS_IMPERIAL:SM_DISTS_METRIC;
+
+      useEffect(()=>{
+        const data=loadSM();
+        setMarks(data[smKey]||{});
+      },[smKey]);
+
+      const updateMark=(dist,val)=>{
+        const updated=loadSM();
+        if(!updated[smKey])updated[smKey]={};
+        if(val===''){delete updated[smKey][dist];}
+        else{updated[smKey][dist]=val;}
+        saveSM(updated);
+        setMarks({...updated[smKey]});
+      };
+
+      const toggleStyle='flex-1 py-2 text-sm font-semibold rounded-lg transition-colors';
+      const selDropdown='w-full bg-range-800 border border-range-600 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none appearance-none';
+
+      return(
+        <div className="flex flex-col h-full bg-range-900 screen-enter">
+          {/* Header */}
+          <div className="flex items-center gap-2 px-4 pt-12 pb-4 bg-range-800 border-b border-range-700">
+            <button onClick={onBack} className="p-2 -ml-2 text-green-400 active:text-white">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/></svg>
+            </button>
+            <h1 className="text-lg font-bold text-white">Sight Marks</h1>
+          </div>
+
+          {/* Controls */}
+          <div className="px-4 py-3 bg-range-800 border-b border-range-700 space-y-3">
+            {/* Archer selector */}
+            {!addingNew?(
+              <div className="space-y-2">
+                <div className="relative">
+                  <select value={archer} onChange={e=>{if(e.target.value==='__new__'){setAddingNew(true);}else{setArcher(e.target.value);}}} className={selDropdown}>
+                    {allNames.map(n=><option key={n} value={n}>{n}</option>)}
+                    <option value="__new__">+ Add new archer…</option>
+                  </select>
+                  <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-500 pointer-events-none" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                </div>
+              </div>
+            ):(
+              <div className="flex gap-2">
+                <input
+                  value={newName} onChange={e=>setNewName(e.target.value)}
+                  placeholder="Archer name"
+                  className="flex-1 bg-range-700 border border-range-600 rounded-xl px-3 py-2.5 text-white text-sm focus:outline-none placeholder:text-green-700"
+                />
+                {allNames.length>0&&(
+                  <button onClick={()=>setAddingNew(false)} className="px-3 py-2 text-green-400 text-sm">Cancel</button>
+                )}
+              </div>
+            )}
+
+            {/* Bow type toggle */}
+            <div className="flex gap-1 bg-range-700 rounded-xl p-1">
+              {['Recurve','Compound'].map(b=>(
+                <button key={b} onClick={()=>setBow(b)}
+                  className={`${toggleStyle} ${bow===b?'bg-gold-500 text-range-950':'text-green-400'}`}>
+                  {b}
+                </button>
+              ))}
+            </div>
+
+            {/* Unit toggle */}
+            <div className="flex gap-1 bg-range-700 rounded-xl p-1">
+              {[['imperial','Imperial (yds)'],['metric','Metric (m)']].map(([k,l])=>(
+                <button key={k} onClick={()=>setUnit(k)}
+                  className={`${toggleStyle} ${unit===k?'bg-range-500 text-white':'text-green-400'}`}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Distance list */}
+          {(!effectiveArcher)?(
+            <div className="flex-1 flex items-center justify-center">
+              <p className="text-green-600 text-sm text-center px-8">Enter an archer name above to record sight marks.</p>
+            </div>
+          ):(
+            <div className="flex-1 overflow-y-auto">
+              <div className="px-4 pt-3 pb-2">
+                <p className="text-xs text-green-600 uppercase tracking-widest font-semibold">Distance — Sight mark</p>
+              </div>
+              <div className="divide-y divide-range-800">
+                {dists.map(dist=>(
+                  <div key={dist} className="flex items-center justify-between px-4 py-3">
+                    <span className="text-white font-semibold text-base w-20">{dist}</span>
+                    <input
+                      type="number" min="0" step="0.01"
+                      value={marks[dist]||''}
+                      onChange={e=>updateMark(dist,e.target.value)}
+                      placeholder="—"
+                      className="w-28 bg-range-800 border border-range-600 rounded-xl px-3 py-2 text-white text-right text-base font-semibold focus:outline-none focus:border-gold-500 placeholder:text-range-600"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )
+    }
+
     // ── APP ───────────────────────────────────────────────────────────────────
     function App(){
       const [screen,setScreen]=useState('home');
@@ -1116,7 +1253,8 @@
           {screen==='scoring'&&session&&<ScoringScreen session={session} onUpdate={update} onComplete={complete} onBack={home}/>}
           {screen==='results'&&session&&<ResultsScreen session={session} newPBs={newPBs} onNew={()=>setScreen('setup')} onHome={home}/>}
           {screen==='pbs'&&<PersonalBestsScreen onBack={()=>{setMenuOpen(false);setScreen('home')}}/>}
-          <SideMenu open={menuOpen} onClose={()=>setMenuOpen(false)} onPBs={()=>{setMenuOpen(false);setScreen('pbs')}}/>
+          {screen==='sightmarks'&&<SightMarksScreen onBack={()=>{setMenuOpen(false);setScreen('home')}}/>}
+          <SideMenu open={menuOpen} onClose={()=>setMenuOpen(false)} onPBs={()=>{setMenuOpen(false);setScreen('pbs')}} onSightMarks={()=>{setMenuOpen(false);setScreen('sightmarks')}}/>
         </div>
       )
     }
